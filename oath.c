@@ -147,7 +147,7 @@ PHP_FUNCTION(google_authenticator_validate)
         RETURN_NULL();
     }
 
-    output_buffer = totp_generate(secret_key, 6, 30);
+    output_buffer = php_totp_generate(secret_key, 6, 30);
     result = strtoul(output_buffer, NULL, 0);
     user_input_converted = strtoul(user_input, NULL, 0);
 
@@ -179,7 +179,7 @@ PHP_FUNCTION(google_authenticator_generate)
         RETURN_NULL();
     }
 
-    output_buffer = totp_generate(secret_key, 6, 30);
+    output_buffer = php_totp_generate(secret_key, 6, 30);
     result = strtoul(output_buffer, NULL, 0);
 
     RETURN_LONG(result);
@@ -223,7 +223,7 @@ PHP_FUNCTION(totp_validate)
         time_step_size = 60;
     }
 
-    output_buffer = totp_generate(secret_key, length, time_step_size);
+    output_buffer = php_totp_generate(secret_key, length, time_step_size);
     result = strtoul(output_buffer, NULL, 0);
     user_input_converted = strtoul(user_input, NULL, 0);
 
@@ -272,7 +272,7 @@ PHP_FUNCTION(totp_generate)
         time_step_size = 60;
     }
 
-    output_buffer = totp_generate(secret_key, length, time_step_size);
+    output_buffer = php_totp_generate(secret_key, length, time_step_size);
     result = strtoul(output_buffer, NULL, 0);
     RETURN_LONG(result);
 }
@@ -307,7 +307,7 @@ PHP_FUNCTION(hotp_validate)
         length = 6;
     }
 
-    output_buffer = hotp_generate(secret_key, moving_factor, length);
+    output_buffer = php_hotp_generate(secret_key, moving_factor, length);
     result = strtoul(output_buffer, NULL, 0);
     user_input_converted = strtoul(user_input, NULL, 0);
 
@@ -348,7 +348,7 @@ PHP_FUNCTION(hotp_generate)
         length = 6;
     }
 
-    output_buffer = hotp_generate(secret_key, moving_factor, length);
+    output_buffer = php_hotp_generate(secret_key, moving_factor, length);
     result = strtoul(output_buffer, NULL, 0);
     RETURN_LONG(result);
 }
