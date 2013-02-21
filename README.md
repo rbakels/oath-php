@@ -195,3 +195,8 @@ Returns TRUE if the inputted user value matches the generated counter based toke
     $counter_value = 10;
     $valid = hotp_validate($secret_key, $user_input, $counter_value);
 
+
+TODO
+-----
+ * A Win32 build.
+ * Better error handling within the extension.
