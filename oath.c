@@ -354,7 +354,7 @@ PHP_FUNCTION(hotp_generate)
 }
 /* }}} */
 
-char* hotp_generate(char* key, ulong moving_factor, ulong length)
+static char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
 {
     char *secret;
     size_t secretlen = 0;
@@ -418,7 +418,7 @@ char* hotp_generate(char* key, ulong moving_factor, ulong length)
     return output_buffer;
 }
 
-char* totp_generate(char* key, ulong length, ulong time_step_size)
+static char* php_totp_generate(char* key, ulong length, ulong time_step_size)
 {
     char *secret;
     size_t secretlen = 0;
