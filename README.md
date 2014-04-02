@@ -18,7 +18,7 @@ License
 
 Author
 -----------
-Robin Bakels [<<robin@xlab.nl>>](robin@xlab.nl).
+Robin Bakels [<<rbakels@gmail.com>>](rbakels@gmail.com).
 
 Requirements
 -----------
