@@ -36,7 +36,7 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_count, 0, 0, 1)
 ZEND_END_ARG_INFO()
 
 /* {{{ oath_functions[] */
-static function_entry php_oath_functions[] = {
+static zend_function_entry php_oath_functions[] = {
     PHP_FE(totp_validate, arginfo_count)
     PHP_FE(totp_generate, arginfo_count)
     PHP_FE(hotp_validate, arginfo_count)
