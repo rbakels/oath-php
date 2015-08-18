@@ -17,54 +17,42 @@
 
     $Id$
 */
+
 #ifdef HAVE_CONFIG_H
-    #include "config.h"
+#include "config.h"
 #endif
 
-#include "php.h"
-#include "php_ini.h"
-#include "ext/standard/info.h"
-#include "zend_exceptions.h"
-#include "ext/spl/spl_exceptions.h"
-#include "zend_extensions.h"
 #include "php_oath.h"
 
-#ifdef ZEND_ENGINE_3
-typedef size_t strsize_t;
-#else
-typedef int strsize_t;
-#endif
-
-/* Definition of the arginfo */
+/* {{{ arginfo */
 ZEND_BEGIN_ARG_INFO_EX(arginfo_count, 0, 0, 1)
     ZEND_ARG_INFO(0, var)
     ZEND_ARG_INFO(0, mode)
 ZEND_END_ARG_INFO()
+/* }}} */
 
-/* {{{ oath_functions[] */
-static zend_function_entry php_oath_functions[] = {
+/* {{{ oath_functions */
+static zend_function_entry oath_functions[] = {
     PHP_FE(totp_validate, arginfo_count)
     PHP_FE(totp_generate, arginfo_count)
     PHP_FE(hotp_validate, arginfo_count)
     PHP_FE(hotp_generate, arginfo_count)
     PHP_FE(google_authenticator_validate, arginfo_count)
     PHP_FE(google_authenticator_generate, arginfo_count)
-    {NULL, NULL, NULL}
+    PHP_FE_END
 };
 /* }}} */
 
-/**
- * the following code creates an entry for the module and registers it with Zend.
- */
+/* {{{ oath_module_entry */
 zend_module_entry oath_module_entry = {
 #if ZEND_MODULE_API_NO >= 20010901
     STANDARD_MODULE_HEADER,
 #endif
     PHP_OATH_EXTNAME,
-    php_oath_functions,
-    PHP_MINIT(oath), /* name of the MINIT function or NULL if not applicable */
-    PHP_MSHUTDOWN(oath), /* name of the MSHUTDOWN function or NULL if not applicable */
-    PHP_RINIT(oath), /* name of the RINIT function or NULL if not applicable */
+    oath_functions,
+    NULL, /* name of the MINIT function or NULL if not applicable */
+    NULL, /* name of the MSHUTDOWN function or NULL if not applicable */
+    NULL, /* name of the RINIT function or NULL if not applicable */
     NULL, /* name of the RSHUTDOWN function or NULL if not applicable */
     PHP_MINFO(oath), /* name of the MINFO function or NULL if not applicable */
 #if ZEND_MODULE_API_NO >= 20010901
@@ -75,61 +63,18 @@ zend_module_entry oath_module_entry = {
 
 #ifdef COMPILE_DL_OATH
 ZEND_GET_MODULE(oath)
-#define OATH_ZEND_EXT  ZEND_DLEXPORT
-#else
-#define OATH_ZEND_EXT
 #endif
-
-OATH_ZEND_EXT zend_extension oath_extension_entry = {
-    PHP_OATH_EXTNAME,
-    PHP_OATH_VERSION,
-    "Robin Bakels",
-    "http://www.php.net",
-    "2013",
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL
-};
-
-PHP_INI_BEGIN()
-PHP_INI_END()
-
-PHP_RINIT_FUNCTION(oath)
-{
-    return SUCCESS;
-}
-
-PHP_MINIT_FUNCTION(oath)
-{
-    REGISTER_INI_ENTRIES();
-
-    return SUCCESS;
-}
-
-PHP_MSHUTDOWN_FUNCTION(oath)
-{
-    UNREGISTER_INI_ENTRIES();
-
-    return SUCCESS;
-}
+/* }}} */
 
 /* {{{ PHP_MINFO(oath) */
 PHP_MINFO_FUNCTION(oath)
 {
-    char        buf[10];
-
     php_info_print_table_start();
     php_info_print_table_row(2, "oath support", "enabled");
+    php_info_print_table_row(2, "Version", PHP_OATH_VERSION);
+    php_info_print_table_row(2, "liboath Version", OATH_VERSION);
     php_info_print_table_end();
+
 }
 /* }}} */
 
@@ -289,6 +234,60 @@ PHP_FUNCTION(totp_generate)
 
     RETURN_LONG(result);
 }
+
+PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
+{
+    char *secret;
+    size_t secretlen = 0;
+    char* output_buffer;
+    time_t current_time = time(NULL);
+    time_t start_time = 0;
+
+    /**
+     * Convert hexadecimal string to binary encoded string.
+     */
+    secretlen = 1 + strlen (key) / 2;
+    secret = (char *)emalloc(secretlen+1);
+
+    oath_hex2bin (key, secret, &secretlen);
+
+    /**
+     * Convert current time to UTC time.
+     */
+    struct tm * ptm;
+    ptm = gmtime ( &current_time );
+    current_time = mktime(ptm);
+
+    /**
+     * Create a start time, and convert it to UTC time.
+     */
+    ptm = gmtime ( &start_time );
+    start_time = mktime(ptm);
+
+    /**
+     * Init oath library.
+     */
+    oath_init();
+
+    /**
+     * Allocate enough memory in output buffer.
+     */
+    output_buffer = (char *)emalloc(length+1);
+    size_t secret_length = (size_t)length;
+
+    /**
+     * Generate the TOTP value from the given parameters.
+     */
+    oath_totp_generate(secret, secretlen, current_time, time_step_size, start_time, secret_length, output_buffer);
+
+    /**
+     * We're done using the Oath library. Close it.
+     */
+    oath_done();
+    efree(secret);
+
+    return output_buffer;
+}
 /* }}} */
 
 /* {{{ proto bool hotp_validate(string secret_key, string user_input, int moving_factor [, int length = 6 ])
@@ -369,7 +368,6 @@ PHP_FUNCTION(hotp_generate)
 
     RETURN_LONG(result);
 }
-/* }}} */
 
 PHPAPI char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
 {
@@ -424,57 +422,14 @@ PHPAPI char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
 
     return output_buffer;
 }
+/* }}} */
 
-PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
-{
-    char *secret;
-    size_t secretlen = 0;
-    char* output_buffer;
-    time_t current_time = time(NULL);
-    time_t start_time = 0;
+/*
+ * Local variables:
+ * tab-width: 4
+ * c-basic-offset: 4
+ * End:
+ * vim600: fdm=marker
+ * vim: noet sw=4 ts=4
+ */
 
-    /**
-     * Convert hexadecimal string to binary encoded string.
-     */
-    secretlen = 1 + strlen (key) / 2;
-    secret = (char *)emalloc(secretlen+1);
-
-    oath_hex2bin (key, secret, &secretlen);
-
-    /**
-     * Convert current time to UTC time.
-     */
-    struct tm * ptm;
-    ptm = gmtime ( &current_time );
-    current_time = mktime(ptm);
-
-    /**
-     * Create a start time, and convert it to UTC time.
-     */
-    ptm = gmtime ( &start_time );
-    start_time = mktime(ptm);
-
-    /**
-     * Init oath library.
-     */
-    oath_init();
-
-    /**
-     * Allocate enough memory in output buffer.
-     */
-    output_buffer = (char *)emalloc(length+1);
-    size_t secret_length = (size_t)length;
-
-    /**
-     * Generate the TOTP value from the given parameters.
-     */
-    oath_totp_generate(secret, secretlen, current_time, time_step_size, start_time, secret_length, output_buffer);
-
-    /**
-     * We're done using the Oath library. Close it.
-     */
-    oath_done();
-    efree(secret);
-
-    return output_buffer;
-}
