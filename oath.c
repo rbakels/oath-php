@@ -29,6 +29,12 @@
 #include "zend_extensions.h"
 #include "php_oath.h"
 
+#ifdef ZEND_ENGINE_3
+typedef size_t strsize_t;
+#else
+typedef int strsize_t;
+#endif
+
 /* Definition of the arginfo */
 ZEND_BEGIN_ARG_INFO_EX(arginfo_count, 0, 0, 1)
     ZEND_ARG_INFO(0, var)
@@ -133,9 +139,9 @@ PHP_MINFO_FUNCTION(oath)
 PHP_FUNCTION(google_authenticator_validate)
 {
     char *secret_key;
-    int   secret_key_length;
+    strsize_t secret_key_length;
     char *user_input;
-    int   user_input_length;
+    strsize_t user_input_length;
     char *output_buffer;
     ulong result;
     ulong user_input_converted;
@@ -149,6 +155,8 @@ PHP_FUNCTION(google_authenticator_validate)
 
     output_buffer = php_totp_generate(secret_key, 6, 30);
     result = strtoul(output_buffer, NULL, 0);
+    efree(output_buffer);
+
     user_input_converted = strtoul(user_input, NULL, 0);
 
     if (result == user_input_converted)
@@ -167,7 +175,7 @@ PHP_FUNCTION(google_authenticator_validate)
 PHP_FUNCTION(google_authenticator_generate)
 {
     char *secret_key;
-    int   secret_key_length;
+    strsize_t secret_key_length;
     char *output_buffer;
     ulong result;
 
@@ -181,6 +189,7 @@ PHP_FUNCTION(google_authenticator_generate)
 
     output_buffer = php_totp_generate(secret_key, 6, 30);
     result = strtoul(output_buffer, NULL, 0);
+    efree(output_buffer);
 
     RETURN_LONG(result);
 }
@@ -191,9 +200,9 @@ PHP_FUNCTION(google_authenticator_generate)
 PHP_FUNCTION(totp_validate)
 {
     char *secret_key;
-    int   secret_key_length;
+    strsize_t secret_key_length;
     char *user_input;
-    int   user_input_length;
+    strsize_t user_input_length;
     ulong length;
     ulong time_step_size;
     char *output_buffer;
@@ -225,6 +234,8 @@ PHP_FUNCTION(totp_validate)
 
     output_buffer = php_totp_generate(secret_key, length, time_step_size);
     result = strtoul(output_buffer, NULL, 0);
+    efree(output_buffer);
+
     user_input_converted = strtoul(user_input, NULL, 0);
 
     if (result == user_input_converted)
@@ -243,7 +254,7 @@ PHP_FUNCTION(totp_validate)
 PHP_FUNCTION(totp_generate)
 {
     char *secret_key;
-    int   secret_key_length;
+    strsize_t secret_key_length;
     ulong length;
     ulong time_step_size;
     char *output_buffer;
@@ -274,6 +285,8 @@ PHP_FUNCTION(totp_generate)
 
     output_buffer = php_totp_generate(secret_key, length, time_step_size);
     result = strtoul(output_buffer, NULL, 0);
+    efree(output_buffer);
+
     RETURN_LONG(result);
 }
 /* }}} */
@@ -283,9 +296,9 @@ PHP_FUNCTION(totp_generate)
 PHP_FUNCTION(hotp_validate)
 {
     char *secret_key;
-    int   secret_key_length;
+    strsize_t secret_key_length;
     char *user_input;
-    int   user_input_length;
+    strsize_t user_input_length;
     ulong moving_factor;
     ulong length;
     char *output_buffer;
@@ -309,6 +322,8 @@ PHP_FUNCTION(hotp_validate)
 
     output_buffer = php_hotp_generate(secret_key, moving_factor, length);
     result = strtoul(output_buffer, NULL, 0);
+    efree(output_buffer);
+
     user_input_converted = strtoul(user_input, NULL, 0);
 
     if (result == user_input_converted)
@@ -327,7 +342,7 @@ PHP_FUNCTION(hotp_validate)
 PHP_FUNCTION(hotp_generate)
 {
     char *secret_key;
-    int   secret_key_length;
+    strsize_t secret_key_length;
     ulong moving_factor;
     ulong length;
     char *output_buffer;
@@ -350,11 +365,13 @@ PHP_FUNCTION(hotp_generate)
 
     output_buffer = php_hotp_generate(secret_key, moving_factor, length);
     result = strtoul(output_buffer, NULL, 0);
+    efree(output_buffer);
+
     RETURN_LONG(result);
 }
 /* }}} */
 
-static char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
+PHPAPI char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
 {
     char *secret;
     size_t secretlen = 0;
@@ -387,17 +404,6 @@ static char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
      * Init oath library.
      */
     oath_init();
-
-    /**
-     * Calculate Base32 from the binary encoded hex string.
-     */
-    char* base32;
-    base32 = (char *)emalloc(2*(size_t)length+1);
-
-    /**
-     * Encode the secret key as base32, since we need it to base the calculation on.
-     */
-    oath_base32_encode (secret, secretlen, &base32, NULL);
 
     /**
      * Allocate enough memory in output buffer.
@@ -414,11 +420,12 @@ static char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
      * We're done using the Oath library. Close it.
      */
     oath_done();
+    efree(secret);
 
     return output_buffer;
 }
 
-static char* php_totp_generate(char* key, ulong length, ulong time_step_size)
+PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
 {
     char *secret;
     size_t secretlen = 0;
@@ -453,17 +460,6 @@ static char* php_totp_generate(char* key, ulong length, ulong time_step_size)
     oath_init();
 
     /**
-     * Calculate Base32 from the binary encoded hex string.
-     */
-    char* base32;
-    base32 = (char *)emalloc(2*(size_t)length+1);
-
-    /**
-     * Encode the secret key as base32, since we need it to base the calculation on.
-     */
-    oath_base32_encode (secret, secretlen, &base32, NULL);
-
-    /**
      * Allocate enough memory in output buffer.
      */
     output_buffer = (char *)emalloc(length+1);
@@ -478,6 +474,7 @@ static char* php_totp_generate(char* key, ulong length, ulong time_step_size)
      * We're done using the Oath library. Close it.
      */
     oath_done();
+    efree(secret);
 
     return output_buffer;
 }

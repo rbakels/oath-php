@@ -26,8 +26,9 @@ PHP_MINIT_FUNCTION(oath);
 PHP_MSHUTDOWN_FUNCTION(oath);
 PHP_RINIT_FUNCTION(oath);
 
-static char* php_totp_generate(char* key, ulong length, ulong step_size);
-static char* php_hotp_generate(char* key, ulong length, ulong step_size);
+PHPAPI char* php_totp_generate(char* key, ulong length, ulong step_size);
+PHPAPI char* php_hotp_generate(char* key, ulong length, ulong step_size);
+
 PHP_FUNCTION(totp_validate);
 PHP_FUNCTION(totp_generate);
 PHP_FUNCTION(hotp_validate);
