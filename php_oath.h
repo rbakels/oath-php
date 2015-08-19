@@ -21,14 +21,16 @@
 
 #ifdef ZEND_ENGINE_3
 typedef size_t strsize_t;
+#define _RETURN_STRINGL RETURN_STRINGL
 #else
 typedef int strsize_t;
+#define _RETURN_STRINGL(s, l) RETURN_STRING(s, l, 1)
 #endif
 
-PHPAPI char* php_totp_generate(char* key, ulong length, ulong step_size);
-PHPAPI int php_totp_validate(char* key, ulong length, ulong time_step_size, const char *otp);
-PHPAPI char* php_hotp_generate(char* key, ulong length, ulong step_size);
-PHPAPI int php_hotp_validate(char* key, uint64_t moving_factor, const char *otp);
+PHPAPI int php_totp_generate(const char *key, size_t key_length, unsigned digits, unsigned time_step_size, char *otp);
+PHPAPI int php_totp_validate(const char *key, size_t key_length, unsigned digits, unsigned time_step_size, const char *otp);
+PHPAPI int php_hotp_generate(const char *key, size_t key_length, uint64_t moving_factor, size_t digits, char *otp);
+PHPAPI int php_hotp_validate(const char *key, size_t key_length, uint64_t moving_factor, const char *otp);
 
 PHP_FUNCTION(totp_validate);
 PHP_FUNCTION(totp_generate);

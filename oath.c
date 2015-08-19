@@ -29,12 +29,19 @@
 /**
  * Convert hexadecimal string to binary encoded string.
  */
-static inline void php_oath_hex2bin(const char *key, size_t keylen,
+static inline int php_oath_hex2bin(const char *key, size_t keylen,
     char **secret, size_t *secretlen)
 {
-    *secretlen = 1 + keylen / 2;
-    *secret = (char *)emalloc(*secretlen + 1);
-    oath_hex2bin(key, *secret, secretlen);
+    size_t len = 1 + keylen / 2;
+    char *sec = (char *)emalloc(len + 1);
+    int ret = oath_hex2bin(key, sec, &len);
+    if (ret >= 0) {
+        *secret = sec;
+        *secretlen = len;
+    } else {
+        efree(sec);
+    }
+    return ret;
 }
 
 /**
@@ -115,6 +122,7 @@ PHP_FUNCTION(google_authenticator_validate)
     char *user_input;
     strsize_t user_input_length;
     char *output_buffer;
+    int ret;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -123,9 +131,19 @@ PHP_FUNCTION(google_authenticator_validate)
         RETURN_NULL();
     }
 
-    if (php_totp_validate(secret_key, 6, 30, user_input) >= 0) {
+    ret = php_totp_validate(secret_key, secret_key_length, 6, 30, user_input);
+
+    if (ret >= 0) {
         RETURN_TRUE;
     } else {
+        if( ret != OATH_INVALID_OTP ) {
+            zend_error(
+                E_WARNING,
+                "%s: %s",
+                oath_strerror_name(ret),
+                oath_strerror(ret)
+            );
+        }
         RETURN_FALSE;
     }
 }
@@ -137,7 +155,8 @@ PHP_FUNCTION(google_authenticator_generate)
 {
     char *secret_key;
     strsize_t secret_key_length;
-    char *output_buffer;
+    char output_buffer[9] = {0};
+    int ret;
 
     /**
      * Parse parameters.
@@ -146,9 +165,19 @@ PHP_FUNCTION(google_authenticator_generate)
         RETURN_NULL();
     }
 
-    output_buffer = php_totp_generate(secret_key, 6, 30);
+    ret = php_totp_generate(secret_key, secret_key_length, 6, 30, output_buffer);
 
-    RETURN_STRING(output_buffer, 0);
+    if (ret >= 0) {
+        _RETURN_STRINGL(output_buffer, 6);
+    } else {
+        zend_error(
+            E_WARNING,
+            "%s: %s",
+            oath_strerror_name(ret),
+            oath_strerror(ret)
+        );
+        RETURN_FALSE;
+    }
 }
 /* }}} */
 
@@ -163,6 +192,7 @@ PHP_FUNCTION(totp_validate)
     ulong length = 0;
     ulong time_step_size = 0;
     char *output_buffer;
+    int ret;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -185,29 +215,42 @@ PHP_FUNCTION(totp_validate)
         time_step_size = 60;
     }
 
-    if (php_totp_validate(secret_key, length, time_step_size, user_input) >= 0) {
+    ret = php_totp_validate(secret_key, secret_key_length, length, time_step_size, user_input);
+
+    if (ret >= 0) {
         RETURN_TRUE;
     } else {
+        if( ret != OATH_INVALID_OTP ) {
+            zend_error(
+                E_WARNING,
+                "%s: %s",
+                oath_strerror_name(ret),
+                oath_strerror(ret)
+            );
+        }
         RETURN_FALSE;
     }
 }
 
-PHPAPI int php_totp_validate(char* key, ulong length, ulong time_step_size, const char *otp)
+PHPAPI int php_totp_validate(const char *key, size_t key_length, unsigned length, unsigned time_step_size, const char *otp)
 {
     char *secret;
-    size_t secretlen = 0;
-    char* output_buffer;
+    size_t secret_length = 0;
     time_t current_time = time(NULL);
     time_t start_time = 0;
     size_t window = 0;
     int ret;
 
-    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+    ret = php_oath_hex2bin(key, key_length, &secret, &secret_length);
+    if (ret < 0) {
+        return ret;
+    }
+
     current_time = php_oath_time2utc(current_time);
     start_time = php_oath_time2utc(start_time);
     
     oath_init();
-    ret = oath_totp_validate(secret, secretlen, current_time, time_step_size, start_time, window, otp);
+    ret = oath_totp_validate(secret, secret_length, current_time, time_step_size, start_time, window, otp);
     oath_done();
 
     efree(secret);
@@ -224,7 +267,8 @@ PHP_FUNCTION(totp_generate)
     strsize_t secret_key_length;
     ulong length;
     ulong time_step_size;
-    char *output_buffer;
+    char output_buffer[9] = {0};
+    int ret;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -247,20 +291,34 @@ PHP_FUNCTION(totp_generate)
         time_step_size = 60;
     }
 
-    output_buffer = php_totp_generate(secret_key, length, time_step_size);
+    ret = php_totp_generate(secret_key, secret_key_length, length, time_step_size, output_buffer);
 
-    RETURN_STRING(output_buffer, 0);
+    if (ret >= 0) {
+        _RETURN_STRINGL(output_buffer, length);
+    } else {
+        zend_error(
+            E_WARNING,
+            "%s: %s",
+            oath_strerror_name(ret),
+            oath_strerror(ret)
+        );
+        RETURN_FALSE;
+    }
 }
 
-PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
+PHPAPI int php_totp_generate(const char *key, size_t key_length, unsigned digits, unsigned time_step_size, char *otp)
 {
     char *secret;
     size_t secretlen = 0;
-    char* output_buffer;
     time_t current_time = time(NULL);
     time_t start_time = 0;
+    int ret;
 
-    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+    ret = php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+    if (ret < 0) {
+        return ret;
+    }
+
     current_time = php_oath_time2utc(current_time);
     start_time = php_oath_time2utc(start_time);
 
@@ -270,15 +328,9 @@ PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
     oath_init();
 
     /**
-     * Allocate enough memory in output buffer.
-     */
-    output_buffer = (char *)emalloc(length+1);
-    size_t secret_length = (size_t)length;
-
-    /**
      * Generate the TOTP value from the given parameters.
      */
-    oath_totp_generate(secret, secretlen, current_time, time_step_size, start_time, secret_length, output_buffer);
+    ret = oath_totp_generate(secret, secretlen, current_time, time_step_size, start_time, digits, otp);
 
     /**
      * We're done using the Oath library. Close it.
@@ -286,7 +338,7 @@ PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
     oath_done();
     efree(secret);
 
-    return output_buffer;
+    return ret;
 }
 /* }}} */
 
@@ -300,6 +352,7 @@ PHP_FUNCTION(hotp_validate)
     strsize_t user_input_length;
     ulong moving_factor;
     char *output_buffer;
+    int ret;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -308,25 +361,38 @@ PHP_FUNCTION(hotp_validate)
         RETURN_NULL();
     }
 
-    if (php_hotp_validate(secret_key, moving_factor, user_input) >= 0) {
+    ret = php_hotp_validate(secret_key, secret_key_length, moving_factor, user_input);
+
+    if (ret >= 0) {
         RETURN_TRUE;
     } else {
+        if( ret != OATH_INVALID_OTP ) {
+            zend_error(
+                E_WARNING,
+                "%s: %s",
+                oath_strerror_name(ret),
+                oath_strerror(ret)
+            );
+        }
         RETURN_FALSE;
     }
 }
 
-PHPAPI int php_hotp_validate(char* key, uint64_t moving_factor, const char *otp)
+PHPAPI int php_hotp_validate(const char *key, size_t key_length, uint64_t moving_factor, const char *otp)
 {
     char *secret;
-    size_t secretlen = 0;
+    size_t secret_length = 0;
     char* output_buffer;
     size_t window = 0;
     int ret;
 
-    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+    ret = php_oath_hex2bin(key, key_length, &secret, &secret_length);
+    if (ret < 0) {
+        return ret;
+    }
 
     oath_init();
-    ret = oath_hotp_validate(secret, secretlen, moving_factor, window, otp);
+    ret = oath_hotp_validate(secret, secret_length, moving_factor, window, otp);
     oath_done();
 
     efree(secret);
@@ -343,7 +409,8 @@ PHP_FUNCTION(hotp_generate)
     strsize_t secret_key_length;
     ulong moving_factor;
     ulong length;
-    char *output_buffer;
+    char output_buffer[9] = {0};
+    int ret;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -359,18 +426,31 @@ PHP_FUNCTION(hotp_generate)
         length = 6;
     }
 
-    output_buffer = php_hotp_generate(secret_key, moving_factor, length);
+    ret = php_hotp_generate(secret_key, secret_key_length, moving_factor, length, output_buffer);
 
-    RETURN_STRING(output_buffer, 0);
+    if (ret >= 0) {
+        _RETURN_STRINGL(output_buffer, length);
+    } else {
+        zend_error(
+            E_WARNING,
+            "%s: %s",
+            oath_strerror_name(ret),
+            oath_strerror(ret)
+        );
+        RETURN_FALSE;
+    }
 }
 
-PHPAPI char* php_hotp_generate(char* key, uint64_t moving_factor, size_t digits)
+PHPAPI int php_hotp_generate(const char *key, size_t key_length, uint64_t moving_factor, size_t digits, char *otp)
 {
     char *secret;
-    size_t secretlen = 0;
-    char *output_buffer;
+    size_t secret_length = 0;
+    int ret;
 
-    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+    ret = php_oath_hex2bin(key, key_length, &secret, &secret_length);
+    if (ret < 0) {
+        return ret;
+    }
 
     /**
      * Init oath library.
@@ -378,14 +458,9 @@ PHPAPI char* php_hotp_generate(char* key, uint64_t moving_factor, size_t digits)
     oath_init();
 
     /**
-     * Allocate enough memory in output buffer.
-     */
-    output_buffer = (char *)emalloc(digits + 1);
-
-    /**
      * Generate the HOTP value from the given parameters.
      */
-    oath_hotp_generate (secret, secretlen, moving_factor, digits, 0, OATH_HOTP_DYNAMIC_TRUNCATION, output_buffer);
+    ret = oath_hotp_generate(secret, secret_length, moving_factor, digits, 0, OATH_HOTP_DYNAMIC_TRUNCATION, otp);
 
     /**
      * We're done using the Oath library. Close it.
@@ -393,7 +468,7 @@ PHPAPI char* php_hotp_generate(char* key, uint64_t moving_factor, size_t digits)
     oath_done();
     efree(secret);
 
-    return output_buffer;
+    return ret;
 }
 /* }}} */
 
