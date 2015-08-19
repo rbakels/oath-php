@@ -4,7 +4,7 @@ hotp_validate() function - basic test for hotp_validate()
 <?php
 $key = '0123456789ABCDEF';
 $generatedValue = hotp_generate($key, 1, 6);
-$valid = hotp_validate($key, $generatedValue, 1, 6);
+$valid = hotp_validate($key, $generatedValue, 1);
 var_dump($valid);
 ?>
 --EXPECT--

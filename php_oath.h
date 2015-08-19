@@ -26,7 +26,9 @@ typedef int strsize_t;
 #endif
 
 PHPAPI char* php_totp_generate(char* key, ulong length, ulong step_size);
+PHPAPI int php_totp_validate(char* key, ulong length, ulong time_step_size, const char *otp);
 PHPAPI char* php_hotp_generate(char* key, ulong length, ulong step_size);
+PHPAPI int php_hotp_validate(char* key, uint64_t moving_factor, const char *otp);
 
 PHP_FUNCTION(totp_validate);
 PHP_FUNCTION(totp_generate);

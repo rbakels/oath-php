@@ -24,6 +24,33 @@
 
 #include "php_oath.h"
 
+/* {{{ utils */
+
+/**
+ * Convert hexadecimal string to binary encoded string.
+ */
+static inline void php_oath_hex2bin(const char *key, size_t keylen,
+    char **secret, size_t *secretlen)
+{
+    *secretlen = 1 + keylen / 2;
+    *secret = (char *)emalloc(*secretlen + 1);
+    oath_hex2bin(key, *secret, secretlen);
+}
+
+/**
+ * Convert current time to UTC time.
+ */
+static inline time_t php_oath_time2utc(time_t time)
+{
+    struct tm *ptm;
+    
+    ptm = gmtime(&time);
+    return mktime(ptm);
+}
+
+/* }}} */
+
+
 /* {{{ arginfo */
 ZEND_BEGIN_ARG_INFO_EX(arginfo_count, 0, 0, 1)
     ZEND_ARG_INFO(0, var)
@@ -71,10 +98,10 @@ PHP_MINFO_FUNCTION(oath)
 {
     php_info_print_table_start();
     php_info_print_table_row(2, "oath support", "enabled");
-    php_info_print_table_row(2, "Version", PHP_OATH_VERSION);
-    php_info_print_table_row(2, "liboath Version", OATH_VERSION);
+    php_info_print_table_row(2, "Oath Extension Version", PHP_OATH_VERSION);
+    php_info_print_table_row(2, "Oath Library Version", oath_check_version(NULL));
+    php_info_print_table_row(2, "Oath Header Version", OATH_VERSION);
     php_info_print_table_end();
-
 }
 /* }}} */
 
@@ -88,8 +115,6 @@ PHP_FUNCTION(google_authenticator_validate)
     char *user_input;
     strsize_t user_input_length;
     char *output_buffer;
-    ulong result;
-    ulong user_input_converted;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -98,18 +123,9 @@ PHP_FUNCTION(google_authenticator_validate)
         RETURN_NULL();
     }
 
-    output_buffer = php_totp_generate(secret_key, 6, 30);
-    result = strtoul(output_buffer, NULL, 0);
-    efree(output_buffer);
-
-    user_input_converted = strtoul(user_input, NULL, 0);
-
-    if (result == user_input_converted)
-    {
+    if (php_totp_validate(secret_key, 6, 30, user_input) >= 0) {
         RETURN_TRUE;
-    }
-    else
-    {
+    } else {
         RETURN_FALSE;
     }
 }
@@ -122,21 +138,17 @@ PHP_FUNCTION(google_authenticator_generate)
     char *secret_key;
     strsize_t secret_key_length;
     char *output_buffer;
-    ulong result;
 
     /**
      * Parse parameters.
      */
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &secret_key, &secret_key_length) == FAILURE)
-    {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &secret_key, &secret_key_length) == FAILURE) {
         RETURN_NULL();
     }
 
     output_buffer = php_totp_generate(secret_key, 6, 30);
-    result = strtoul(output_buffer, NULL, 0);
-    efree(output_buffer);
 
-    RETURN_LONG(result);
+    RETURN_STRING(output_buffer, 0);
 }
 /* }}} */
 
@@ -148,11 +160,9 @@ PHP_FUNCTION(totp_validate)
     strsize_t secret_key_length;
     char *user_input;
     strsize_t user_input_length;
-    ulong length;
-    ulong time_step_size;
+    ulong length = 0;
+    ulong time_step_size = 0;
     char *output_buffer;
-    ulong result;
-    ulong user_input_converted;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -164,37 +174,49 @@ PHP_FUNCTION(totp_validate)
     /**
      * Set default value of optional parameter 'length' to 6.
      */
-    if (length == 0)
-    {
+    if (length == 0) {
         length = 6;
     }
 
     /**
      * Set default value of optional parameter 'time_step_size' to 60.
      */
-    if (time_step_size == 0)
-    {
+    if (time_step_size == 0) {
         time_step_size = 60;
     }
 
-    output_buffer = php_totp_generate(secret_key, length, time_step_size);
-    result = strtoul(output_buffer, NULL, 0);
-    efree(output_buffer);
-
-    user_input_converted = strtoul(user_input, NULL, 0);
-
-    if (result == user_input_converted)
-    {
+    if (php_totp_validate(secret_key, length, time_step_size, user_input) >= 0) {
         RETURN_TRUE;
-    }
-    else
-    {
+    } else {
         RETURN_FALSE;
     }
 }
+
+PHPAPI int php_totp_validate(char* key, ulong length, ulong time_step_size, const char *otp)
+{
+    char *secret;
+    size_t secretlen = 0;
+    char* output_buffer;
+    time_t current_time = time(NULL);
+    time_t start_time = 0;
+    size_t window = 0;
+    int ret;
+
+    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+    current_time = php_oath_time2utc(current_time);
+    start_time = php_oath_time2utc(start_time);
+    
+    oath_init();
+    ret = oath_totp_validate(secret, secretlen, current_time, time_step_size, start_time, window, otp);
+    oath_done();
+
+    efree(secret);
+
+    return ret;
+}
 /* }}} */
 
-/* {{{ proto int totp_generate(string secret_key [, int length = 6 [, int time_step_size = 60 ]])
+/* {{{ proto string totp_generate(string secret_key [, int length = 6 [, int time_step_size = 60 ]])
     Generate the current time based value for the secret_key */
 PHP_FUNCTION(totp_generate)
 {
@@ -203,7 +225,6 @@ PHP_FUNCTION(totp_generate)
     ulong length;
     ulong time_step_size;
     char *output_buffer;
-    ulong result;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -215,24 +236,20 @@ PHP_FUNCTION(totp_generate)
     /**
      * Set default value of optional parameter 'length' to 6.
      */
-    if (length == 0)
-    {
+    if (length == 0) {
         length = 6;
     }
 
     /**
      * Set default value of optional parameter 'time_step_size' to 60.
      */
-    if (time_step_size == 0)
-    {
+    if (time_step_size == 0) {
         time_step_size = 60;
     }
 
     output_buffer = php_totp_generate(secret_key, length, time_step_size);
-    result = strtoul(output_buffer, NULL, 0);
-    efree(output_buffer);
 
-    RETURN_LONG(result);
+    RETURN_STRING(output_buffer, 0);
 }
 
 PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
@@ -243,26 +260,9 @@ PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
     time_t current_time = time(NULL);
     time_t start_time = 0;
 
-    /**
-     * Convert hexadecimal string to binary encoded string.
-     */
-    secretlen = 1 + strlen (key) / 2;
-    secret = (char *)emalloc(secretlen+1);
-
-    oath_hex2bin (key, secret, &secretlen);
-
-    /**
-     * Convert current time to UTC time.
-     */
-    struct tm * ptm;
-    ptm = gmtime ( &current_time );
-    current_time = mktime(ptm);
-
-    /**
-     * Create a start time, and convert it to UTC time.
-     */
-    ptm = gmtime ( &start_time );
-    start_time = mktime(ptm);
+    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+    current_time = php_oath_time2utc(current_time);
+    start_time = php_oath_time2utc(start_time);
 
     /**
      * Init oath library.
@@ -290,7 +290,7 @@ PHPAPI char* php_totp_generate(char* key, ulong length, ulong time_step_size)
 }
 /* }}} */
 
-/* {{{ proto bool hotp_validate(string secret_key, string user_input, int moving_factor [, int length = 6 ])
+/* {{{ proto bool hotp_validate(string secret_key, string user_input, int moving_factor)
     Validate the current counter based token for the secret key against the given user inputted value. */
 PHP_FUNCTION(hotp_validate)
 {
@@ -299,44 +299,43 @@ PHP_FUNCTION(hotp_validate)
     char *user_input;
     strsize_t user_input_length;
     ulong moving_factor;
-    ulong length;
     char *output_buffer;
-    ulong result;
-    ulong user_input_converted;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
      */
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssl|l", &secret_key, &secret_key_length, &user_input, &user_input_length, &moving_factor, &length) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssl", &secret_key, &secret_key_length, &user_input, &user_input_length, &moving_factor) == FAILURE) {
         RETURN_NULL();
     }
 
-    /**
-     * Set default value of optional parameter 'length' to 6.
-     */
-    if (length == 0)
-    {
-        length = 6;
-    }
-
-    output_buffer = php_hotp_generate(secret_key, moving_factor, length);
-    result = strtoul(output_buffer, NULL, 0);
-    efree(output_buffer);
-
-    user_input_converted = strtoul(user_input, NULL, 0);
-
-    if (result == user_input_converted)
-    {
+    if (php_hotp_validate(secret_key, moving_factor, user_input) >= 0) {
         RETURN_TRUE;
-    }
-    else
-    {
+    } else {
         RETURN_FALSE;
     }
 }
+
+PHPAPI int php_hotp_validate(char* key, uint64_t moving_factor, const char *otp)
+{
+    char *secret;
+    size_t secretlen = 0;
+    char* output_buffer;
+    size_t window = 0;
+    int ret;
+
+    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
+
+    oath_init();
+    ret = oath_hotp_validate(secret, secretlen, moving_factor, window, otp);
+    oath_done();
+
+    efree(secret);
+
+    return ret;
+}
 /* }}} */
 
-/* {{{ proto int hotp_generate(string secret_key, int moving_factor [, int length = 6 ])
+/* {{{ proto string hotp_generate(string secret_key, int moving_factor [, int length = 6 ])
     Generate the current counter based value for the secret_key */
 PHP_FUNCTION(hotp_generate)
 {
@@ -345,7 +344,6 @@ PHP_FUNCTION(hotp_generate)
     ulong moving_factor;
     ulong length;
     char *output_buffer;
-    ulong result;
 
     /**
      * Parse parameters. Make the secret_key mandatory, and the length and time factor optional.
@@ -357,46 +355,22 @@ PHP_FUNCTION(hotp_generate)
     /**
      * Set default value of optional parameter 'length' to 6.
      */
-    if (length == 0)
-    {
+    if (length == 0) {
         length = 6;
     }
 
     output_buffer = php_hotp_generate(secret_key, moving_factor, length);
-    result = strtoul(output_buffer, NULL, 0);
-    efree(output_buffer);
 
-    RETURN_LONG(result);
+    RETURN_STRING(output_buffer, 0);
 }
 
-PHPAPI char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
+PHPAPI char* php_hotp_generate(char* key, uint64_t moving_factor, size_t digits)
 {
     char *secret;
     size_t secretlen = 0;
-    char* output_buffer;
-    time_t current_time = time(NULL);
-    time_t start_time = 0;
+    char *output_buffer;
 
-    /**
-     * Convert hexadecimal string to binary encoded string.
-     */
-    secretlen = 1 + strlen (key) / 2;
-    secret = (char *)emalloc(secretlen+1);
-
-    oath_hex2bin (key, secret, &secretlen);
-
-    /**
-     * Convert current time to UTC time.
-     */
-    struct tm * ptm;
-    ptm = gmtime ( &current_time );
-    current_time = mktime(ptm);
-
-    /**
-     * Create a start time, and convert it to UTC time.
-     */
-    ptm = gmtime ( &start_time );
-    start_time = mktime(ptm);
+    php_oath_hex2bin(key, strlen(key), &secret, &secretlen);
 
     /**
      * Init oath library.
@@ -406,13 +380,12 @@ PHPAPI char* php_hotp_generate(char* key, ulong moving_factor, ulong length)
     /**
      * Allocate enough memory in output buffer.
      */
-    output_buffer = (char *)emalloc(length+1);
-    size_t secret_length = (size_t)length;
+    output_buffer = (char *)emalloc(digits + 1);
 
     /**
      * Generate the HOTP value from the given parameters.
      */
-    oath_hotp_generate (secret, secretlen, moving_factor, secret_length, false, OATH_HOTP_DYNAMIC_TRUNCATION, output_buffer);
+    oath_hotp_generate (secret, secretlen, moving_factor, digits, 0, OATH_HOTP_DYNAMIC_TRUNCATION, output_buffer);
 
     /**
      * We're done using the Oath library. Close it.
