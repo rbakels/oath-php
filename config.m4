@@ -10,11 +10,9 @@ if test "$PHP_OATH" = "yes"; then
     AC_MSG_ERROR(oath.h not found. Please (re)install liboath.)
   fi
 
-  PHP_CHECK_LIBRARY(oath, oath_totp_generate,
-  [
-    PHP_ADD_LIBRARY(oath,, OATH_SHARED_LIBADD)
-    AC_DEFINE(HAVE_OATH,1,[ ])
-  ],[],[
+  PHP_CHECK_LIBRARY(oath, oath_totp_generate, [], [
+    AC_MSG_ERROR(oath lib not found. Please (re)install liboath.)
+  ], [
     -L$PHP_OATH_FILTER_DIR/lib -loath
   ])
 
@@ -23,3 +21,4 @@ if test "$PHP_OATH" = "yes"; then
   PHP_NEW_EXTENSION(oath, oath.c, $ext_shared)
   PHP_SUBST(OATH_SHARED_LIBADD)
 fi
+

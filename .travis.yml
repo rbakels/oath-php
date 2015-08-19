@@ -1,0 +1,28 @@
+language: php
+
+php:
+  - 5.3
+  - 5.4
+  - 5.5
+  - 5.6
+  - 7.0
+
+sudo: required
+
+before_install:
+  - travis_retry sudo apt-get update -qq
+  - travis_retry sudo apt-get install -qq liboath-dev liboath0
+  - sudo ldconfig
+
+install:
+  - phpize
+  - ./configure --enable-oath
+  - make
+
+script:
+  - export NO_INTERACTION=1
+  - export REPORT_EXIT_STATUS=1
+  - export TEST_PHP_EXECUTABLE=`which php`
+  - php run-tests.php -d extension=oath.so -d extension_dir=modules -n ./tests/*.phpt
+  - for i in `ls tests/*.out 2>/dev/null`; do echo "-- START ${i}"; cat $i; echo "-- END"; done
+
