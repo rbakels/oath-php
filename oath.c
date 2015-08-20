@@ -222,7 +222,7 @@ PHP_FUNCTION(google_authenticator_generate)
 {
     char *secret_key;
     strsize_t secret_key_length;
-    char output_buffer[9] = {0};
+    char output_buffer[16] = {0};
     int ret;
 
     /**
@@ -333,7 +333,7 @@ PHP_FUNCTION(totp_generate)
     strsize_t secret_key_length;
     ulong length;
     ulong time_step_size;
-    char output_buffer[9] = {0};
+    char output_buffer[16] = {0};
     int ret;
 
     /**
@@ -474,7 +474,7 @@ PHP_FUNCTION(hotp_generate)
     strsize_t secret_key_length;
     ulong moving_factor;
     ulong length;
-    char output_buffer[9] = {0};
+    char output_buffer[16] = {0};
     int ret;
 
     /**
