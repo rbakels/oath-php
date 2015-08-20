@@ -24,6 +24,9 @@
 
 #include "php_oath.h"
 
+ZEND_DECLARE_MODULE_GLOBALS(oath)
+
+
 /* {{{ utils */
 
 /**
@@ -104,31 +107,14 @@ static zend_function_entry oath_functions[] = {
 };
 /* }}} */
 
-/* {{{ oath_module_entry */
-zend_module_entry oath_module_entry = {
-#if ZEND_MODULE_API_NO >= 20010901
-    STANDARD_MODULE_HEADER,
-#endif
-    PHP_OATH_EXTNAME,
-    oath_functions,
-    NULL, /* name of the MINIT function or NULL if not applicable */
-    NULL, /* name of the MSHUTDOWN function or NULL if not applicable */
-    NULL, /* name of the RINIT function or NULL if not applicable */
-    NULL, /* name of the RSHUTDOWN function or NULL if not applicable */
-    PHP_MINFO(oath), /* name of the MINFO function or NULL if not applicable */
-#if ZEND_MODULE_API_NO >= 20010901
-    PHP_OATH_VERSION,
-#endif
-    STANDARD_MODULE_PROPERTIES
-};
-
-#ifdef COMPILE_DL_OATH
-ZEND_GET_MODULE(oath)
-#endif
+/* {{{ php.ini directive registration */
+PHP_INI_BEGIN()
+  STD_PHP_INI_ENTRY("oath.window", "0", PHP_INI_ALL, OnUpdateLong, window, zend_oath_globals, oath_globals)
+PHP_INI_END()
 /* }}} */
 
 /* {{{ PHP_MINFO(oath) */
-PHP_MINFO_FUNCTION(oath)
+static PHP_MINFO_FUNCTION(oath)
 {
     php_info_print_table_start();
     php_info_print_table_row(2, "oath support", "enabled");
@@ -136,7 +122,61 @@ PHP_MINFO_FUNCTION(oath)
     php_info_print_table_row(2, "Oath Library Version", oath_check_version(NULL));
     php_info_print_table_row(2, "Oath Header Version", OATH_VERSION);
     php_info_print_table_end();
+
+    DISPLAY_INI_ENTRIES();
 }
+/* }}} */
+
+/* {{{ PHP_MINIT(oath) */
+static PHP_MINIT_FUNCTION(oath)
+{
+    REGISTER_INI_ENTRIES();
+
+    return SUCCESS;
+}
+/* }}} */
+
+/* {{{ PHP_MSHUTDOWN(oath) */
+static PHP_MSHUTDOWN_FUNCTION(oath)
+{
+    UNREGISTER_INI_ENTRIES();
+
+    return SUCCESS;
+}
+/* }}} */
+
+/* {{{ PHP_GINIT(oath) */
+static PHP_GINIT_FUNCTION(oath)
+{
+    oath_globals->window = 0;
+}
+/* }}} */
+
+/* {{{ oath_module_entry */
+zend_module_entry oath_module_entry = {
+#if ZEND_MODULE_API_NO >= 20010901
+    STANDARD_MODULE_HEADER,
+#endif
+    PHP_OATH_EXTNAME,
+    oath_functions,
+    PHP_MINIT(oath), /* name of the MINIT function or NULL if not applicable */
+    PHP_MSHUTDOWN(oath), /* name of the MSHUTDOWN function or NULL if not applicable */
+    NULL, /* name of the RINIT function or NULL if not applicable */
+    NULL, /* name of the RSHUTDOWN function or NULL if not applicable */
+    PHP_MINFO(oath), /* name of the MINFO function or NULL if not applicable */
+#if ZEND_MODULE_API_NO >= 20010901
+    PHP_OATH_VERSION,
+#endif
+    PHP_MODULE_GLOBALS(oath),
+    PHP_GINIT(oath), /* name of the GINIT function or NULL if not applicable */
+    NULL,
+    NULL,
+    STANDARD_MODULE_PROPERTIES_EX
+};
+
+#ifdef COMPILE_DL_OATH
+ZEND_GET_MODULE(oath)
+#endif
 /* }}} */
 
 /*  {{{ proto bool google_authenticator_validate(string secret_key, string user_input)
@@ -158,7 +198,7 @@ PHP_FUNCTION(google_authenticator_validate)
         RETURN_NULL();
     }
 
-    ret = php_totp_validate(secret_key, secret_key_length, 6, 30, user_input);
+    ret = php_totp_validate(secret_key, secret_key_length, 6, 30, OATHG(window), user_input);
 
     if (ret >= 0) {
         RETURN_TRUE;
@@ -242,7 +282,7 @@ PHP_FUNCTION(totp_validate)
         time_step_size = 60;
     }
 
-    ret = php_totp_validate(secret_key, secret_key_length, length, time_step_size, user_input);
+    ret = php_totp_validate(secret_key, secret_key_length, length, time_step_size, OATHG(window), user_input);
 
     if (ret >= 0) {
         RETURN_TRUE;
@@ -259,13 +299,12 @@ PHP_FUNCTION(totp_validate)
     }
 }
 
-PHPAPI int php_totp_validate(const char *key, size_t key_length, unsigned length, unsigned time_step_size, const char *otp)
+PHPAPI int php_totp_validate(const char *key, size_t key_length, unsigned length, unsigned time_step_size, size_t window, const char *otp)
 {
     char *secret;
     size_t secret_length = 0;
     time_t current_time = time(NULL);
     time_t start_time = 0;
-    size_t window = 0;
     int ret;
 
     ret = php_oath_hex2bin(key, key_length, &secret, &secret_length);
@@ -388,7 +427,7 @@ PHP_FUNCTION(hotp_validate)
         RETURN_NULL();
     }
 
-    ret = php_hotp_validate(secret_key, secret_key_length, moving_factor, user_input);
+    ret = php_hotp_validate(secret_key, secret_key_length, moving_factor, OATHG(window), user_input);
 
     if (ret >= 0) {
         RETURN_TRUE;
@@ -405,12 +444,11 @@ PHP_FUNCTION(hotp_validate)
     }
 }
 
-PHPAPI int php_hotp_validate(const char *key, size_t key_length, uint64_t moving_factor, const char *otp)
+PHPAPI int php_hotp_validate(const char *key, size_t key_length, uint64_t moving_factor, size_t window, const char *otp)
 {
     char *secret;
     size_t secret_length = 0;
     char* output_buffer;
-    size_t window = 0;
     int ret;
 
     ret = php_oath_hex2bin(key, key_length, &secret, &secret_length);
