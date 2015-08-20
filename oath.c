@@ -57,22 +57,49 @@ static inline time_t php_oath_time2utc(time_t time)
 
 /* }}} */
 
-
 /* {{{ arginfo */
-ZEND_BEGIN_ARG_INFO_EX(arginfo_count, 0, 0, 1)
-    ZEND_ARG_INFO(0, var)
-    ZEND_ARG_INFO(0, mode)
+ZEND_BEGIN_ARG_INFO_EX(arginfo_google_authenticator_generate, 0, 0, 1)
+    ZEND_ARG_INFO(0, secret_key)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_google_authenticator_validate, 0, 0, 2)
+    ZEND_ARG_INFO(0, secret_key)
+    ZEND_ARG_INFO(0, user_input)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_totp_generate, 0, 0, 1)
+    ZEND_ARG_INFO(0, secret_key)
+    ZEND_ARG_INFO(0, length)
+    ZEND_ARG_INFO(0, time_step_size)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_totp_validate, 0, 0, 2)
+    ZEND_ARG_INFO(0, secret_key)
+    ZEND_ARG_INFO(0, user_input)
+    ZEND_ARG_INFO(0, length)
+    ZEND_ARG_INFO(0, time_step_size)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_hotp_generate, 0, 0, 2)
+    ZEND_ARG_INFO(0, secret_key)
+    ZEND_ARG_INFO(0, moving_factor)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_hotp_validate, 0, 0, 3)
+    ZEND_ARG_INFO(0, secret_key)
+    ZEND_ARG_INFO(0, user_input)
+    ZEND_ARG_INFO(0, moving_factor)
 ZEND_END_ARG_INFO()
 /* }}} */
 
 /* {{{ oath_functions */
 static zend_function_entry oath_functions[] = {
-    PHP_FE(totp_validate, arginfo_count)
-    PHP_FE(totp_generate, arginfo_count)
-    PHP_FE(hotp_validate, arginfo_count)
-    PHP_FE(hotp_generate, arginfo_count)
-    PHP_FE(google_authenticator_validate, arginfo_count)
-    PHP_FE(google_authenticator_generate, arginfo_count)
+    PHP_FE(totp_validate, arginfo_totp_validate)
+    PHP_FE(totp_generate, arginfo_totp_generate)
+    PHP_FE(hotp_validate, arginfo_hotp_validate)
+    PHP_FE(hotp_generate, arginfo_hotp_generate)
+    PHP_FE(google_authenticator_validate, arginfo_google_authenticator_validate)
+    PHP_FE(google_authenticator_generate, arginfo_google_authenticator_generate)
     PHP_FE_END
 };
 /* }}} */
