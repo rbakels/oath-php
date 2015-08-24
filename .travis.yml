@@ -7,12 +7,13 @@ php:
   - 5.6
   - 7.0
 
-sudo: required
+sudo: false
 
-before_install:
-  - travis_retry sudo apt-get update -qq
-  - travis_retry sudo apt-get install -qq liboath-dev liboath0
-  - sudo ldconfig
+addons:
+  apt:
+    packages:
+      - liboath0
+      - liboath-dev
 
 install:
   - phpize
